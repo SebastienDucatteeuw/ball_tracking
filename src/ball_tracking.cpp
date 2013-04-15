@@ -4,11 +4,23 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/point_types_conversion.h>
+#include <pcl/common/statistics/statistics.h>
+#include <pcl/visualization/pcl_plotter.h>
+#include <vector>
+#include <utility>
+#include <math.h>  //for abs()
+
+using namespace pcl::visualization;
 
 class SimpleOpenNIViewer
 {
   public:
   SimpleOpenNIViewer () : viewer ("PCL OpenNI Viewer") {}
+
+    int func(pcl::PointXYZHSV p)
+    {
+      return p.h;
+    }
 
     void cloud_cb_ (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr &cloud)
     {
@@ -34,6 +46,7 @@ class SimpleOpenNIViewer
       int n_points = cloud_result->points.size ();
       int mean_h = 0;
 
+/*
       if (n_points != 0)
       {
         for (int i = 0; i < n_points; i++)
@@ -43,15 +56,23 @@ class SimpleOpenNIViewer
         mean_h = mean_h/n_points;
         std::cout << "Mean H(SV) value: " << mean_h << std::endl;
       }
+*/
 
-      if (!viewer.wasStopped())
+      std::vector <float> histogram;
+      pcl::HistogramStatistics <pcl::PointCloud<pcl::PointXYZHSV> > obj (0, 359, 360);
+      obj.setFunctionPointer (func);
+      obj.compute (*cloud_result, *histogram);
+      std::cout << "Bin 10: " << histogram[10] << std::endl;
+      histogram.clear ();
+
+      if (!viewer.wasStopped ())
         viewer.showCloud (cloud_filtered);
 
     }
 
     void run ()
     {
-      pcl::Grabber* interface = new pcl::OpenNIGrabber();
+      pcl::Grabber* interface = new pcl::OpenNIGrabber ();
 
       boost::function<void (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr&)> f =
         boost::bind (&SimpleOpenNIViewer::cloud_cb_, this, _1);
@@ -73,6 +94,28 @@ class SimpleOpenNIViewer
 
 int main ()
 {
+
+/*
+  //defining a plotter
+  pcl::visualization::PCLPlotter* plotter = new PCLPlotter("Color histogram");
+  std::vector<double> data(10);
+  data[0] = 4;
+  data[1] = 2;
+  data[2] = 3;
+  data[3] = 8;
+  data[4] = 4;
+  data[5] = 6;
+  data[6] = 7;
+  data[7] = 9;
+  data[8] = 1;
+  data[9] = 2; 
+
+  plotter->addHistogramData (data,10); //number of bins are 10
+  //display the plot
+  plotter->plot ();
+  plotter->clearPlots ();
+*/
+
   SimpleOpenNIViewer v;
   v.run ();
   return 0;
