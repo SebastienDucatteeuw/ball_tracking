@@ -9,17 +9,66 @@
 #include <vector>
 #include <utility>
 #include <math.h>  //for abs()
+#include "pcl/filters/crop_box.h"
+#include "pcl/filters/impl/crop_box.hpp"
 
 using namespace pcl::visualization;
+
+std::vector <float> hist1(361);
+std::vector <float> hist2(361);
+Eigen::Vector4f minPoint;
+Eigen::Vector4f maxPoint;
 
 class SimpleOpenNIViewer
 {
   public:
-  SimpleOpenNIViewer () : viewer ("PCL OpenNI Viewer") {}
+    SimpleOpenNIViewer () : viewer ("PCL OpenNI Viewer"){}
 
-    int func(pcl::PointXYZHSV p)
+    typedef int (*fptr_)(pcl::PointXYZHSV);
+
+    int func (pcl::PointXYZHSV p)
     {
       return p.h;
+    }
+
+    double ChiSquaredDistance (std::vector <float> &hist1, std::vector <float> &hist2)
+    {
+      if (hist1.size() != hist2.size())
+      {
+        std::cout << "both histograms do not have the same number of bins" << std::endl;
+        return 0;
+        PCL_INFO ("[HistogramStatistics::ChiSquaredDistance] : both histograms do not have the same number of bins\n");
+      }
+      else
+      {
+        double d = 0;
+        int M = 361; int N = 361;
+        int counter = 0;
+        for (int i = 0; i <= 360; i++)
+        {
+          if((hist1[i]+hist2[i]) != 0)
+          {
+            /*
+            1/(MN) SUM_i[((Mni - Nmi)^2)/(mi+ni)].
+            M and N are the total number of entries in each histogram, mi is the number of entries in bin i of histogram M and ni is the number of entries in bin i of histogram N. 
+            */
+            d = d + std::pow(M*hist1[i]-N*hist2[i],2)/(hist1[i]+hist2[i]);
+            counter++;
+          }
+        }
+        return d/(M*N);
+      }
+    }
+
+    void setCropBox (Eigen::Vector4f &minPoint, Eigen::Vector4f &maxPoint)
+    {
+      minPoint[0]= -1;  // define minimum point x
+      minPoint[1]= -1;  // define minimum point y
+      minPoint[2]= 0;   // define minimum point z
+      maxPoint[0]= 1;   // define max point x
+      maxPoint[1]= 1;   // define max point y
+      maxPoint[2]= 0.7; // define max point z
+      return;
     }
 
     void cloud_cb_ (const pcl::PointCloud<pcl::PointXYZRGBA>::ConstPtr &cloud)
@@ -27,47 +76,25 @@ class SimpleOpenNIViewer
       pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud_filtered (new pcl::PointCloud<pcl::PointXYZRGBA>);
       pcl::PointCloud<pcl::PointXYZHSV>::Ptr cloud_result (new pcl::PointCloud<pcl::PointXYZHSV>);
 
-      pcl::PassThrough<pcl::PointXYZRGBA> pass;
-      pass.setInputCloud (cloud);
-      pass.setFilterFieldName ("x");
-      pass.setFilterLimits (0.0, 5.0);
-      pass.filter (*cloud_filtered);
-      pass.setInputCloud (cloud_filtered);
-      pass.setFilterFieldName ("y");
-      pass.setFilterLimits (0.0, 5.0);
-      pass.filter (*cloud_filtered);
-      pass.setInputCloud (cloud_filtered);
-      pass.setFilterFieldName ("z");
-      pass.setFilterLimits (0.0, 0.9);
-      pass.filter (*cloud_filtered);
+      pcl::CropBox<pcl::PointXYZRGBA> cropFilter;
+      cropFilter.setInputCloud (cloud);
+      cropFilter.setMin (minPoint);
+      cropFilter.setMax (maxPoint);
+      cropFilter.filter (*cloud_filtered);
 
       PointCloudXYZRGBAtoXYZHSV (*cloud_filtered, *cloud_result);
 
-      int n_points = cloud_result->points.size ();
-      int mean_h = 0;
+      pcl::HistogramStatistics <pcl::PointXYZHSV> obj (0, 360, 361, false, true);
+      obj.computeHue (*cloud_result, hist2);
 
-/*
-      if (n_points != 0)
-      {
-        for (int i = 0; i < n_points; i++)
-        {
-          mean_h = mean_h + cloud_result->points[i].h;
-        }
-        mean_h = mean_h/n_points;
-        std::cout << "Mean H(SV) value: " << mean_h << std::endl;
-      }
-*/
+      double d = ChiSquaredDistance(hist1, hist2);
+      hist1 = hist2;
+      hist2.clear ();
 
-      std::vector <float> histogram;
-      pcl::HistogramStatistics <pcl::PointCloud<pcl::PointXYZHSV> > obj (0, 359, 360);
-      obj.setFunctionPointer (func);
-      obj.compute (*cloud_result, *histogram);
-      std::cout << "Bin 10: " << histogram[10] << std::endl;
-      histogram.clear ();
+      std::cout << "ChiSquaredDistance: " << d << std::endl;
 
       if (!viewer.wasStopped ())
         viewer.showCloud (cloud_filtered);
-
     }
 
     void run ()
@@ -94,29 +121,8 @@ class SimpleOpenNIViewer
 
 int main ()
 {
-
-/*
-  //defining a plotter
-  pcl::visualization::PCLPlotter* plotter = new PCLPlotter("Color histogram");
-  std::vector<double> data(10);
-  data[0] = 4;
-  data[1] = 2;
-  data[2] = 3;
-  data[3] = 8;
-  data[4] = 4;
-  data[5] = 6;
-  data[6] = 7;
-  data[7] = 9;
-  data[8] = 1;
-  data[9] = 2; 
-
-  plotter->addHistogramData (data,10); //number of bins are 10
-  //display the plot
-  plotter->plot ();
-  plotter->clearPlots ();
-*/
-
   SimpleOpenNIViewer v;
+  v.setCropBox (minPoint, maxPoint);
   v.run ();
   return 0;
 }
